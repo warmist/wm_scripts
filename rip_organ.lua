@@ -1,4 +1,16 @@
 local args={...}
+local debug
+for i,v in ipairs(args) do
+	if v=="-d" or d=="--debug" then
+		debug=true
+	end
+end
+
+function dprint( ... )
+	if debug then
+		print(...)
+	end
+end
 function findBodyPart(caste_raw,token)
     for id,bp in ipairs(caste_raw.body_info.body_parts) do
         if bp.token==token then
@@ -9,7 +21,7 @@ end
 local trg=dfhack.gui.getSelectedUnit()
 local caste=df.creature_raw.find(trg.race).caste[trg.caste]
 local organ_id=findBodyPart(caste,args[1])
-print("Organ id:",organ_id)
+dprint("Organ id:",organ_id)
 --TODO: add bleeding,pain
 --ripping part:
 local body=trg.body
@@ -22,6 +34,8 @@ body.wounds:insert("#",
     			{new=true,body_part_id=organ_id--[[bleeding=1000,pain=250]],surface_perc=100}
     	}
     })
+--pls update the unit
+trg.flags2={calculated_nerves=false,calculated_bodyparts=false,calculated_insulation=false}
 --]]
 --placing the organ part
 local hItem=df.item_corpsepiecest:new()
@@ -92,6 +106,6 @@ if dfhack.items.moveToGround(hItem,copyall(trg.pos)) then
     df.global.world.items.all:insert("#",hItem)
     hItem:categorize(true)
 else
-    print("Place failed!")
+    dprint("Place failed!")
     hItem:delete()
 end
