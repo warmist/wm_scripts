@@ -3,6 +3,10 @@ local wid=require 'gui.widgets'
 
 --[[
     A widget to plot some lines
+    TODO: 
+     * add axis and axis numbering
+     * add legend
+     * add interactivity (e.g. mouse over to see exact values)
 ]]
 
 line_plot=defclass(line_plot,wid.Widget)
