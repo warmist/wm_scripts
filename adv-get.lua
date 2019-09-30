@@ -21,6 +21,7 @@ function get_player_backpack(  )
 		end
 	end
 end
+local FIX_IS_APPLIED=false
 multikey_table=defclass(multikey_table)
 --[[
 	TODO:
@@ -275,13 +276,16 @@ function ItemColumn:init(args)
 	--TODO: block "B"ackpack here if you dont have one
 	self:update_location(true)
 end
---[[function ItemColumn:onInput( keys )
+
+function ItemColumn:onInput( keys )
+	--NOTE: even with fix this is needed because one key triggers multiple keybindings (e.g. numpad7 is "7" and move NW)
 	if self.subviews.items.edit.active then
 		return self.subviews.items:onInput(keys)
 	else
 		return self:inputToSubviews(keys)
 	end
-end]]
+end
+
 ItemTransferUi=defclass(ItemTransferUi,gui.FramedScreen)
 ItemTransferUi.ATTRS{
     frame_title = "Item transfer",
@@ -325,7 +329,10 @@ function ItemTransferUi:init(args)
 	self:location_change("left",self.subviews.left.start_location)
 	self:location_change("right",self.subviews.right.start_location)
 end
---[=[
+if FIX_IS_APPLIED then
+	ItemTransferUi.onInput=nil
+else
+
 function ItemTransferUi:onInput(keys)
 
 
@@ -339,41 +346,10 @@ function ItemTransferUi:onInput(keys)
         end
     else
     	self:inputToSubviews(keys)
-    	--[[
-        local s=keys._STRING
-        if s==string.byte('*') then
-            local v=self.selected[1] or false
-            for i=0,26 do
-
-                self.selected[i]=not v
-            end
-        end
-        if s>=string.byte('a') and s<=string.byte('z') then
-            local idx=s-string.byte('a')+1
-            if self.selected[idx] then
-                self.selected[idx]=false
-            else
-                self.selected[idx]=true
-            end
-        end
-        if s>=string.byte('A') and s<=string.byte('Z') then
-            local idx=s-string.byte('A')+1
-            if orders[idx] and orders[idx].f then
-                if orders[idx].f(self:GetSelectedUnits(),cursor) then
-                    self:dismiss()
-                end
-            end
-            if is_cheat then
-                idx=idx-#orders
-                if cheats[idx] and cheats[idx].f then
-                    if cheats[idx].f(self:GetSelectedUnits(),cursor) then
-                        self:dismiss()
-                    end
-                end
-            end
-        end]]
     end
-end]=]
+end
+
+end
 --[=[function ItemTransferUi:onRenderBody( dc)
     --list widget goes here...
     --[[
