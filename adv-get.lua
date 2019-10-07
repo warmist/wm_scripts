@@ -1,29 +1,22 @@
 --An advanced get window inspired by "Cataclysm: Dark days ahead"
 --[[
     TODO:
-        * figure out "blocked tiles"
         * better "tile name print"
         * make keys not be CUSTOM_
-        * block "full" tiles
         * three modes:
             - cheat -> no volume checks
             - vanilla -> no checks only for players backpack
             - strict -> ALL THE CHECKS
         * companion inventory transfers
         * pressing direction that is used in other tab, should swap (??)
-        * check for worn backpack
         * quiver?
         * handle doors /other constructions?
         * FIXME: block container move into container!
+        * other WORN items
+        * probably impossible but pass time?
+        * Dragged: i.e. minecart -- not possible (not easily at least) only set when doing a job with wheelbarrow
 ]]
---[[
-    Dragged: i.e. minecart -- not possible (not easily at least) only set when doing a job with wheelbarrow
-    Container: (which one? there could be many per tile)
-    Inventory: (probably backpack but could be other "worn" containers)
-    Worn
-    Area
-    Numbers
-]]
+
 local gui = require 'gui'
 local dlg = require 'gui.dialogs'
 local widgets = require 'gui.widgets'
