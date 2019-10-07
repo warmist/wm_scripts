@@ -4,6 +4,25 @@
 		* figure out "blocked tiles"
 		* better "tile name print"
 		* make keys not be CUSTOM_
+		* block "full" tiles
+		* three modes:
+			- cheat -> no volume checks
+			- vanilla -> no checks only for players backpack
+			- strict -> ALL THE CHECKS
+		* companion inventory transfers
+		* pressing direction that is used in other tab, should swap (??)
+		* check for worn backpack
+		* quiver?
+		* handle doors /other constructions?
+		* FIXME: block container move into container!
+]]
+--[[
+	Dragged: i.e. minecart -- not possible (not easily at least) only set when doing a job with wheelbarrow
+	Container: (which one? there could be many per tile)
+	Inventory: (probably backpack but could be other "worn" containers)
+	Worn
+	Area
+	Numbers
 ]]
 local gui = require 'gui'
 local dlg = require 'gui.dialogs'
@@ -16,19 +35,53 @@ local target_pos=copyall(df.global.world.units.active[0].pos)
 function get_player_backpack(  )
 	local adv=df.global.world.units.active[0]
 	for i,v in ipairs(adv.inventory) do
-		if df.item_backpackst:is_instance(v.item) then
+		if df.item_backpackst:is_instance(v.item) and v.mode==df.unit_inventory_item.T_mode.Worn then
 			return v.item
 		end
 	end
 end
+function tile_is_blocked( x,y,z )
+	local tt=dfhack.maps.getTileType(x,y,z)
+	--not sure if that covers everything but pretty much?
+	return df.tiletype_shape.attrs[tile_attrs[tt].shape].basic_shape==df.tiletype_shape_basic.Wall
+end
 local FIX_IS_APPLIED=false
+
+---Get item capacity. Returns 0 if not a container. Reversed from df. ANCIENT TODO: verify
+function get_capacity(item) --TODO move to items in dfhack
+	local t=item:getType()
+	if t==df.item_type.TOOL then
+		local st=item.subtype
+		return st.container_capacity
+	end
+	local arr={
+		[df.item_type.GOBLET]=180,
+		[df.item_type.FLASK]=180,
+
+		[df.item_type.CAGE]=6000,
+		[df.item_type.BARREL]=6000,
+		[df.item_type.COFFIN]=6000,
+		[df.item_type.BOX]=6000,
+		[df.item_type.BIN]=6000,
+		[df.item_type.ARMORSTAND]=6000,
+		[df.item_type.WEAPONRACK]=6000,
+		[df.item_type.CABINET]=6000,
+
+		[df.item_type.ANIMALTRAP]=3000,
+		[df.item_type.BACKPACK]=3000,
+
+		[df.item_type.QUIVER]=1200,
+
+		[df.item_type.BUCKET]=600,
+	}
+	return arr[t] or 0
+end
+
 multikey_table=defclass(multikey_table)
 --[[
 	TODO:
 		* weak-ref keys
 		* maybe make index work?
-		* companion inventory transfers
-		* pressing blocked (red) swap selections
 ]]
 function multikey_table:init( args )
 	self.data={}
@@ -72,19 +125,11 @@ function SplitView:updateSubviewLayout(frame_body)
     end
 end
 
---[[
-	Dragged: i.e. minecart
-	Container: (which one? there could be many per tile)
-	Inventory: (probably backpack but could be other "worn" containers)
-	Worn
-	Area
-	Numbers
-]]
+
 
 LocationButtons=defclass(LocationButtons,widgets.Widget)
 LocationButtons.ATTRS{
 	current_loc="C",
-	blocked_loc="",
 	on_loc_change=DEFAULT_NIL,
 }
 function LocationButtons:get_token( id )
@@ -94,16 +139,15 @@ function LocationButtons:get_token( id )
 		if tok then return tok end
 	end
 end
-function LocationButtons:update_keys()
-	--local buttons={{"NW","N","NE"},{"W","C","E"},{"SW","S","SE"}}
-	for n,l in ipairs(self.subviews) do
-		for id,token in pairs(l.text_ids) do
-			if id==self.current_loc then
-				token.key_pen=COLOR_LIGHTBLUE
-			elseif id~=self.blocked_loc then
-				token.key_pen=COLOR_LIGHTGREEN
-			end
-		end
+function LocationButtons:set_blocked( key,value )
+	local tkn=self:get_token(key)
+
+	if value then
+		tkn.enabled=false
+		tkn.key_pen=COLOR_LIGHTRED
+	else
+		tkn.enabled=true
+		tkn.key_pen=COLOR_LIGHTGREEN
 	end
 end
 function LocationButtons:enable( value )
@@ -111,26 +155,23 @@ function LocationButtons:enable( value )
 		l.enabled=value
 	end
 end
+function LocationButtons:change_current( new_key )
+	local tkn=self:get_token(self.current_loc)
+	tkn.key_pen=COLOR_LIGHTGREEN
+
+	self.current_loc=new_key
+
+	tkn=self:get_token(self.current_loc)
+	tkn.key_pen=COLOR_LIGHTBLUE
+end
 function LocationButtons:key_press( k )
-	self.current_loc=k
-	self:update_keys()
+	self:change_current(k)
+
 	if self.on_loc_change then
 		self:on_loc_change()
 	end
 end
-function LocationButtons:set_blocked( new_block )
-	if self.blocked_loc~="" then
-		local tkn=self:get_token(self.blocked_loc)
-		tkn.enabled=true
-		tkn.key_pen=COLOR_LIGHTGREEN
-	end
-	self.blocked_loc=new_block
-	if new_block~="" then
-		local tkn=self:get_token(self.blocked_loc)
-		tkn.enabled=false
-		tkn.key_pen=COLOR_LIGHTRED
-	end
-end
+
 function LocationButtons:init( args )
 	self:addviews{
 		widgets.Label{view_id="bottom",frame = { t=0,l=0}, text={
@@ -145,13 +186,14 @@ function LocationButtons:init( args )
 			{key_sep='()',key="A_MOVE_SAME_SQUARE",id="C",on_activate=self:callback("key_press","C")},
 			{key_sep='()',key="A_MOVE_E",id="E",on_activate=self:callback("key_press","E")}
 		} },
-		widgets.Label{view_id="top",frame = { t=2,l=4}, text={
+		widgets.Label{view_id="top",frame = { t=2,l=0}, text={
+			{key_sep='()',key="CUSTOM_C",id="CONTAINER",on_activate=self:callback("key_press","CONTAINER")},
 			{key_sep='()',key="A_MOVE_SW",id="SW",on_activate=self:callback("key_press","SW")},
 			{key_sep='()',key="A_MOVE_S",id="S",on_activate=self:callback("key_press","S")},
 			{key_sep='()',key="A_MOVE_SE",id="SE",on_activate=self:callback("key_press","SE")}
 		} },
 	}
-	self:update_keys()
+	self:change_current(self.current_loc)
 end
 local LOC_dx={
 			S=0,N=0,C=0,
@@ -166,7 +208,6 @@ local LOC_dy={
 ItemColumn=defclass(ItemColumn,widgets.Panel)
 ItemColumn.ATTRS={
 	start_location="A",
-	other_location="",
 	on_loc_change=DEFAULT_NIL,
 }
 function enum_items( positions )
@@ -188,17 +229,25 @@ function enum_items( positions )
 	end
 	return ret
 end
-function list_items_at( loc )
+function format_volume( v )
+	if v>1000 then
+		return string.format("%.1gk",v/1000)
+	else
+		return string.format("%d",v)
+	end
+end
+function list_items_at( loc,skip_loc )
 	local its
 	if loc=="A" then
 		local positions=multikey_table{}
 		for x=target_pos.x-1,target_pos.x+1 do
 		for y=target_pos.y-1,target_pos.y+1 do
-			--TODO: add skip here (i.e. around except the other part)
 			positions:set({x=x,y=y,z=target_pos.z},x,y,target_pos.z)
 		end
 		end
-		--or here
+		if skip_loc then
+			positions:set(nil,skip_loc.x,skip_loc.y,skip_loc.z)
+		end
 		its=enum_items(positions)
 	else
 		local positions=multikey_table{}
@@ -209,23 +258,65 @@ function list_items_at( loc )
 	end
 	local ret={}
 	for i,v in ipairs(its) do
-		table.insert(ret,{item=v,text=dfhack.items.getDescription(v,0,true)})
+		table.insert(ret,{item=v,text={{text=format_volume(v:getVolume()),width=4},dfhack.items.getDescription(v,0,true)}})
 	end
 	return ret
 end
-
-function ItemColumn:update_items( loc )
-	if loc~="B" then
-		self.subviews.items:setChoices(list_items_at(loc))
-	else
-		--TODO: FIXME tidy up this
-		local items=dfhack.items.getContainedItems(get_player_backpack())
-		local ret={}
+function ItemColumn:update_volume( cur_v,max_v )
+	self.subviews.volume_detail:setText(string.format("Volume %d/%d",cur_v,max_v))
+end
+function list_container( cont )
+	local ret_items={}
+	local volume_sum=0
+	local max_volume=0
+	if cont then
+		local items=dfhack.items.getContainedItems(cont)
 		for i,v in ipairs(items) do
-			table.insert(ret,{item=v,text=dfhack.items.getDescription(v,0,true)})
+			local vol=v:getVolume()
+			volume_sum=volume_sum+vol
+			table.insert(ret_items,{item=v,text={{text=format_volume(vol),width=4},dfhack.items.getDescription(v,0,true)}})
 		end
-		self.subviews.items:setChoices(ret)
 	end
+	return ret_items,volume_sum,get_capacity(cont)
+end
+function ItemColumn:update_items( loc )
+
+	if loc=="B" then
+		--TODO: FIXME tidy up this
+		local ret,volume_sum,volume_max=list_container(get_player_backpack())
+		self:update_volume(volume_sum,volume_max)
+		self.subviews.items:setChoices(ret)
+	elseif loc=="CONTAINER" then
+		local it=self.container_item
+		if it and get_capacity(it) then
+			local ret,volume_sum,volume_max=list_container(it)
+			self:update_volume(volume_sum,volume_max)
+			self.subviews.items:setChoices(ret)
+		else
+			self.subviews.items:setChoices()
+		end
+	else
+		local other_loc
+		if self.other_location and LOC_dx[self.other_location]~=nil  then
+			other_loc={x=target_pos.x+LOC_dx[self.other_location],y=target_pos.y+LOC_dy[self.other_location],z=target_pos.z}
+		end
+		self.subviews.items:setChoices(list_items_at(loc,other_loc))
+		self:update_volume(0,0)
+	end
+end
+function ItemColumn:set_other_loc( ol )
+	local ctrl=self.subviews.buttons
+	if self.other_location~="CONTAINER" and self.other_location~=nil then
+		ctrl:set_blocked(self.other_location,false)
+	end
+
+	self.other_location=ol
+
+	if self.other_location~="CONTAINER" and self.other_location~=nil then
+		ctrl:set_blocked(self.other_location,true)
+	end
+
+	self:update_location(true)
 end
 function ItemColumn:update_location( no_callback )
 	local subname=""
@@ -243,20 +334,40 @@ function ItemColumn:update_location( no_callback )
 		A="Around",
 		C="Center",
 		B="Backpack",
+		CONTAINER="Container",
 	}
 	if new_loc=="A" then
 		subname=" " --bug of some sort? this needs to be non-empty string
 	elseif new_loc=="B" then
 		local backpack=get_player_backpack()
-		subname=dfhack.items.getDescription(backpack,0,true)
+		if backpack then
+			subname=dfhack.items.getDescription(backpack,0,true)
+		else
+			subname=""
+		end
+	elseif new_loc=="CONTAINER" then
+		local _,it=self.subviews.items.list:getSelected()
+		if it and get_capacity(it.item) then
+			subname=dfhack.items.getDescription(it.item,0,true)
+			self.container_item=it.item
+		else
+			subname=""
+		end
 	else
 		local tt=dfhack.maps.getTileType(target_pos.x+LOC_dx[new_loc],target_pos.y+LOC_dy[new_loc],target_pos.z)
 		subname=tile_attrs[tt].caption
 	end
 	self.subviews.location:setText(names[new_loc])
 	self.subviews.loc_detail:setText(subname)
+
 	self:update_items(ctrl.current_loc)
-	ctrl:set_blocked(self.other_location)
+
+	--NOTE: so in init we don't have frame calculated yet (i.e. no layout happened yet)
+	--  but next time we call this to update label with auto size (volume)
+	if self.frame_parent_rect then
+		self:updateLayout(self.frame_parent_rect)
+	end
+
 	if not no_callback and self.on_loc_change then
 		self.on_loc_change(new_loc)
 	end
@@ -264,13 +375,37 @@ end
 function ItemColumn:enable(value )
 	self.subviews.buttons:enable(value)
 	self.active=value
+	self.subviews.items.list.active=value
+	if value then
+		self.subviews.items.list.text_pen=COLOR_CYAN
+	else
+		self.subviews.items.list.text_pen=COLOR_GREY
+	end
+end
+function ItemColumn:update_selected( id,list_item )
+	local is_container=false
+	if list_item and list_item.item then
+		is_container=get_capacity(list_item.item)~=0
+	end
+	--block non containers
+	self.subviews.buttons:set_blocked("CONTAINER",not is_container)
 end
 function ItemColumn:init(args)
     self:addviews{
 		LocationButtons{view_id="buttons",frame={r=0,t=0,w=16},current_loc=self.start_location,on_loc_change=self:callback("update_location",false)},
     	widgets.Label{view_id="location",frame = { t=0,l=1}, text="Around"},
     	widgets.Label{view_id="loc_detail",frame = { t=1,l=1}, text="",text_pen=COLOR_GREY},
-    	widgets.FilteredList{view_id="items",frame={t=3,l=1},edit_key="CUSTOM_S",scroll_keys=widgets.SECONDSCROLL}
+    	widgets.Label{view_id="volume_detail",frame={t=3,r=1},auto_width=true, text="Volume 0/0"},
+    	widgets.Label{view_id="cols",frame={t=3,l=1}, text="Vol "},
+    	widgets.FilteredList{
+    			view_id="items",
+    			frame={t=5,l=1},
+    			edit_key="CUSTOM_S",
+    			edit_below=true,
+    			scroll_keys=widgets.SECONDSCROLL,
+    			inactive_pen=COLOR_GREY,
+    			on_select=self:callback("update_selected")
+    		}
     	--widgets.Label{view_id="key_drag",frame = { t=1,r=1,w=3}, text="[D]"},
 	}
 	--TODO: block "B"ackpack here if you dont have one
@@ -311,20 +446,43 @@ function ItemTransferUi:location_change( side,loc )
 	else
 		trg=self.subviews.left
 	end
-	trg.other_location=loc
-	trg:update_location(true)
+	trg:set_other_loc(loc)
 end
 function ItemTransferUi:init(args)
+	local no_backpack= get_player_backpack()==nil
+	local start_right="B"
+	if no_backpack then
+		start_right="C"
+	end
     self:addviews{
     	widgets.Label{view_id="change_tab",frame = { t=0,l=1}, text={{text="Change tab",key_sep="()",key="CHANGETAB",on_activate=self:callback("switch_tab")}} },
     	widgets.Label{frame = { t=0,l=25}, text={{text="Exit screen",key_sep="()",key="LEAVESCREEN",on_activate=self:callback("dismiss")}} },
     	SplitView{
     		subviews={
-	    	ItemColumn{frame = { t=2,l=0},view_id="right",start_location="B",on_loc_change=self:callback("location_change","right")},
+	    	ItemColumn{frame = { t=2,l=0},view_id="right",start_location=start_right,on_loc_change=self:callback("location_change","right")},
 	    	ItemColumn{frame = { t=2,l=0},view_id="left",start_location="A",on_loc_change=self:callback("location_change","left")}
     		}
     	}
 	}
+	if get_player_backpack()==nil then
+		self.subviews.left.subviews.buttons:set_blocked("B",true)
+		self.subviews.right.subviews.buttons:set_blocked("B",true)
+	end
+	--NOTE: skipping 0,0 (C) because if we have center blocked we are DOOMED
+	local check_sides={
+		S=true,N=true,
+		W=true,NW=true,SW=true,
+		E=true,NE=true,SE=true
+	}
+	for k,v in pairs(check_sides) do
+		local x=target_pos.x+LOC_dx[k]
+		local y=target_pos.y+LOC_dy[k]
+
+		local is_blocked=tile_is_blocked(x,y,target_pos.z)
+		self.subviews.left.subviews.buttons:set_blocked(k,is_blocked)
+		self.subviews.right.subviews.buttons:set_blocked(k,is_blocked)
+	end
+
 	self:switch_tab()
 	self:location_change("left",self.subviews.left.start_location)
 	self:location_change("right",self.subviews.right.start_location)
@@ -350,31 +508,6 @@ function ItemTransferUi:onInput(keys)
 end
 
 end
---[=[function ItemTransferUi:onRenderBody( dc)
-    --list widget goes here...
-    --[[
-    local char_a=string.byte('a')-1
-    dc:newline(1):string("*. All")
-    for k,v in ipairs(self.unit_list) do
-        if self.selected[k] then
-            dc:pen(COLOR_GREEN)
-        else
-            dc:pen(COLOR_GREY)
-        end
-        dc:newline(1):string(string.char(k+char_a)..". "):string(dfhack.TranslateName(v.name));
-    end
-    dc:pen(COLOR_GREY)
-    local w,h=self:getWindowSize()
-    local w2=math.floor(w/2)
-    local char_A=string.byte('A')-1
-    for k,v in ipairs(orders) do
-        dc:seek(w2,k):string(string.char(k+char_A)..". "):string(v.name);
-    end
-    if is_cheat then
-        for k,v in ipairs(cheats) do
-            dc:seek(w2,k+#orders):string(string.char(k+#orders+char_A)..". "):string(v.name);
-        end
-    end]]
-end]=]
+
 local screen=ItemTransferUi{}
 screen:show()
