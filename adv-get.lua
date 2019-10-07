@@ -32,6 +32,19 @@ local tile_attrs=df.tiletype.attrs
 local args={...}
 --local cursor=xyz2pos(df.global.cursor.x,df.global.cursor.y,df.global.cursor.z)
 local target_pos=copyall(df.global.world.units.active[0].pos)
+local LOC_dx={
+    S=0,N=0,C=0,
+    W=-1,NW=-1,SW=-1,
+    E=1,NE=1,SE=1,
+}
+local LOC_dy={
+    W=0,E=0,C=0,
+    N=-1,NW=-1,NE=-1,
+    S=1,SW=1,SE=1,
+}
+function get_target_pos( direction )
+    return target_pos.x+LOC_dx[direction],target_pos.y+LOC_dy[direction],target_pos.z
+end
 function get_player_backpack(  )
     local adv=df.global.world.units.active[0]
     for i,v in ipairs(adv.inventory) do
@@ -195,16 +208,7 @@ function LocationButtons:init( args )
     }
     self:change_current(self.current_loc)
 end
-local LOC_dx={
-            S=0,N=0,C=0,
-            W=-1,NW=-1,SW=-1,
-            E=1,NE=1,SE=1,
-        }
-local LOC_dy={
-    W=0,E=0,C=0,
-    N=-1,NW=-1,NE=-1,
-    S=1,SW=1,SE=1,
-}
+
 ItemColumn=defclass(ItemColumn,widgets.Panel)
 ItemColumn.ATTRS={
     start_location="A",
@@ -252,9 +256,9 @@ function list_items_at( loc,skip_loc )
         its=enum_items(positions)
     else
         local positions=multikey_table{}
-        local x=target_pos.x+LOC_dx[loc]
-        local y=target_pos.y+LOC_dy[loc]
-        positions:set({x=x,y=y,z=target_pos.z},x,y,target_pos.z)
+        local x,y,z=get_target_pos(loc)
+
+        positions:set({x=x,y=y,z=z},x,y,z)
         its=enum_items(positions)
     end
     local ret={}
@@ -290,6 +294,8 @@ function ItemColumn:update_items( loc )
         local it=self.container_item
         if it and get_capacity(it) then
             local ret,volume_sum,volume_max=list_container(it)
+            --TODO: ugly state change here:
+            self.remaining_volume=volume_max-volume_sum
             self:update_volume(volume_sum,volume_max)
             self.subviews.items:setChoices(ret)
         else
@@ -298,10 +304,34 @@ function ItemColumn:update_items( loc )
     else
         local other_loc
         if self.other_location and LOC_dx[self.other_location]~=nil  then
-            other_loc={x=target_pos.x+LOC_dx[self.other_location],y=target_pos.y+LOC_dy[self.other_location],z=target_pos.z}
+            local x,y,z=get_target_pos(self.other_location)
+            other_loc={x=x,y=y,z=z}
         end
         self.subviews.items:setChoices(list_items_at(loc,other_loc))
         self:update_volume(0,0)
+    end
+end
+function ItemColumn:ask_fit( item )
+    if self.current_loc=="A" then --where to put it when "around?", random?
+        return false
+    end
+
+    if self.current_loc=="CONTAINER" then
+        return item:getVolume()<=self.remaining_volume
+    end
+
+    return true
+end
+function ItemColumn:add_item( item )
+    if self.current_loc=="A" then
+        return false
+    elseif self.current_loc=="CONTAINER" then
+        return dfhack.items.moveToContainer(item,self.container_item)
+    elseif self.current_loc=="BACKPACK" then
+        return dfhack.items.moveToContainer(item,get_player_backpack())
+    else
+        local x,y,z=get_target_pos(self.current_loc)
+        return dfhack.items.moveToGround(item,{x=x,y=y,z=z})
     end
 end
 function ItemColumn:set_other_loc( ol )
@@ -316,12 +346,13 @@ function ItemColumn:set_other_loc( ol )
         ctrl:set_blocked(self.other_location,true)
     end
 
-    self:update_location(true)
+    self:update_location()
 end
-function ItemColumn:update_location( no_callback )
-    local subname=""
+function ItemColumn:set_new_location( no_callback )
     local ctrl=self.subviews.buttons
-    local new_loc=ctrl.current_loc
+    local current_loc=ctrl.current_loc
+    self.current_loc=current_loc
+
     local names={
         S="South",
         N="North",
@@ -336,16 +367,16 @@ function ItemColumn:update_location( no_callback )
         B="Backpack",
         CONTAINER="Container",
     }
-    if new_loc=="A" then
+    if current_loc=="A" then
         subname=" " --bug of some sort? this needs to be non-empty string
-    elseif new_loc=="B" then
+    elseif current_loc=="B" then
         local backpack=get_player_backpack()
         if backpack then
             subname=dfhack.items.getDescription(backpack,0,true)
         else
             subname=""
         end
-    elseif new_loc=="CONTAINER" then
+    elseif current_loc=="CONTAINER" then
         local _,it=self.subviews.items.list:getSelected()
         if it and get_capacity(it.item) then
             subname=dfhack.items.getDescription(it.item,0,true)
@@ -354,22 +385,28 @@ function ItemColumn:update_location( no_callback )
             subname=""
         end
     else
-        local tt=dfhack.maps.getTileType(target_pos.x+LOC_dx[new_loc],target_pos.y+LOC_dy[new_loc],target_pos.z)
+        local x,y,z=get_target_pos(current_loc)
+        local tt=dfhack.maps.getTileType(x,y,z)
         subname=tile_attrs[tt].caption
     end
-    self.subviews.location:setText(names[new_loc])
+    self.subviews.location:setText(names[current_loc])
     self.subviews.loc_detail:setText(subname)
 
-    self:update_items(ctrl.current_loc)
+    self:update_location()
+
+    if not no_callback and self.on_loc_change then
+        self.on_loc_change(current_loc)
+    end
+end
+function ItemColumn:update_location(  ) --TODO: @REFACTOR do we still need this?
+    local subname=""
+
+    self:update_items(self.current_loc)
 
     --NOTE: so in init we don't have frame calculated yet (i.e. no layout happened yet)
     --  but next time we call this to update label with auto size (volume)
     if self.frame_parent_rect then
         self:updateLayout(self.frame_parent_rect)
-    end
-
-    if not no_callback and self.on_loc_change then
-        self.on_loc_change(new_loc)
     end
 end
 function ItemColumn:enable(value )
@@ -392,7 +429,7 @@ function ItemColumn:update_selected( id,list_item )
 end
 function ItemColumn:init(args)
     self:addviews{
-        LocationButtons{view_id="buttons",frame={r=0,t=0,w=16},current_loc=self.start_location,on_loc_change=self:callback("update_location",false)},
+        LocationButtons{view_id="buttons",frame={r=0,t=0,w=16},current_loc=self.start_location,on_loc_change=self:callback("set_new_location",false)},
         widgets.Label{view_id="location",frame = { t=0,l=1}, text="Around"},
         widgets.Label{view_id="loc_detail",frame = { t=1,l=1}, text="",text_pen=COLOR_GREY},
         widgets.Label{view_id="volume_detail",frame={t=3,r=1},auto_width=true, text="Volume 0/0"},
@@ -410,7 +447,7 @@ function ItemColumn:init(args)
         --widgets.Label{view_id="key_drag",frame = { t=1,r=1,w=3}, text="[D]"},
     }
     --TODO: block "B"ackpack here if you dont have one
-    self:update_location(true)
+    self:set_new_location(true)
 end
 
 function ItemColumn:onInput( keys )
@@ -450,7 +487,23 @@ function ItemTransferUi:location_change( side,loc )
     trg:set_other_loc(loc)
 end
 function ItemTransferUi:move_item( side,id,list_item )
-    -- body
+    local trg
+    local from_ctrl
+    if side=="left" then
+        trg=self.subviews.right
+        from_ctrl=self.subviews.left
+    else
+        trg=self.subviews.left
+        from_ctrl=self.subviews.right
+    end
+
+    if trg:ask_fit(list_item.item) then
+        trg:add_item(list_item.item)
+        trg:update_location()
+        from_ctrl:update_location()
+    else
+        --TODO: inform user why it can't be added
+    end
 end
 function ItemTransferUi:init(args)
     local no_backpack= get_player_backpack()==nil
@@ -485,10 +538,9 @@ function ItemTransferUi:init(args)
         E=true,NE=true,SE=true
     }
     for k,v in pairs(check_sides) do
-        local x=target_pos.x+LOC_dx[k]
-        local y=target_pos.y+LOC_dy[k]
+        local x,y,z=get_target_pos(k)
 
-        local is_blocked=tile_is_blocked(x,y,target_pos.z)
+        local is_blocked=tile_is_blocked(x,y,z)
         self.subviews.left.subviews.buttons:set_blocked(k,is_blocked)
         self.subviews.right.subviews.buttons:set_blocked(k,is_blocked)
     end
