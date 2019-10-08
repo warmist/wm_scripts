@@ -1,4 +1,21 @@
 --An advanced get window inspired by "Cataclysm: Dark days ahead"
+
+--[====[
+
+gui/adv-get
+===========
+This is an alternative and improved inventory management gui for adventure mode. Loosely
+inspired by "Cataclysm: dark days ahead" roguelike.
+
+The gui has two panes and items can be transfered between them. Each side has following
+modes:
+
+* :kbd:`b` for backpack
+* :kbd:`a` for tiles around you (including center)
+* :kbd:`c` for container
+* `direction keys` for specific direction
+
+--]====]
 --[[
     TODO:
         * better "tile name print"
