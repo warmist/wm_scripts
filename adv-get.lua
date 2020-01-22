@@ -15,6 +15,9 @@ modes:
 * :kbd:`c` for container
 * `direction keys` for specific direction
 
+Moving in item list is done with "Secondary list movement" e.g by default :kbd:`+` and :kbd:`-`.
+Pressing :kbd:`enter` moves item from one list to the other (e.g. from container to the ground).
+
 --]====]
 --[[
     TODO:
