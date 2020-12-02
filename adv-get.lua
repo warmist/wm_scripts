@@ -22,6 +22,7 @@ Pressing :kbd:`enter` moves item from one list to the other (e.g. from container
 --[[
     TODO:
         * better "tile name print"
+        * print where item is from when in "around mode"
         * make keys not be CUSTOM_
         * three modes:
             - cheat -> no volume checks
