@@ -201,19 +201,19 @@ end
 
 function LocationButtons:init( args )
     self:addviews{
-        widgets.Label{view_id="bottom",frame = { t=0,l=0}, text={
+        widgets.Label{view_id="bottom",scroll_keys={},frame = { t=0,l=0}, text={
             {key_sep='()',key="CUSTOM_B",id="B",on_activate=self:callback("key_press","B")},
             {key_sep='()',key="A_MOVE_NW",id="NW",on_activate=self:callback("key_press","NW")},
             {key_sep='()',key="A_MOVE_N",id="N",on_activate=self:callback("key_press","N")},
             {key_sep='()',key="A_MOVE_NE",id="NE",on_activate=self:callback("key_press","NE")}
         } },
-        widgets.Label{view_id="center",frame = { t=1,l=0}, text={
+        widgets.Label{view_id="center",scroll_keys={},frame = { t=1,l=0}, text={
             {key_sep='()',key="CUSTOM_A",id="A",on_activate=self:callback("key_press","A")},
             {key_sep='()',key="A_MOVE_W",id="W",on_activate=self:callback("key_press","W")},
             {key_sep='()',key="A_MOVE_SAME_SQUARE",id="C",on_activate=self:callback("key_press","C")},
             {key_sep='()',key="A_MOVE_E",id="E",on_activate=self:callback("key_press","E")}
         } },
-        widgets.Label{view_id="top",frame = { t=2,l=0}, text={
+        widgets.Label{view_id="top",scroll_keys={},frame = { t=2,l=0}, text={
             {key_sep='()',key="CUSTOM_C",id="CONTAINER",on_activate=self:callback("key_press","CONTAINER")},
             {key_sep='()',key="A_MOVE_SW",id="SW",on_activate=self:callback("key_press","SW")},
             {key_sep='()',key="A_MOVE_S",id="S",on_activate=self:callback("key_press","S")},
