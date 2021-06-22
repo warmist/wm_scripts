@@ -341,7 +341,7 @@ function ItemColumn:add_item( item )
         return false
     elseif self.current_loc=="CONTAINER" then
         return dfhack.items.moveToContainer(item,self.container_item)
-    elseif self.current_loc=="BACKPACK" then
+    elseif self.current_loc=="B" then
         return dfhack.items.moveToContainer(item,get_player_backpack())
     else
         local x,y,z=get_target_pos(self.current_loc)
