@@ -21,6 +21,7 @@ Pressing :kbd:`enter` moves item from one list to the other (e.g. from container
 --]====]
 --[[
     TODO:
+        * add some way of listing/moving in buildings (place on table/in workshop)
         * better "tile name print"
         * print where item is from when in "around mode"
         * make keys not be CUSTOM_
@@ -248,6 +249,37 @@ function enum_items( positions )
     end
     return ret
 end
+function is_building_in_position(b, p )
+    return b.z==p.z and
+       b.x1<=p.x and b.x2>=p.x and
+       b.y1<=p.y and b.y2>=p.y
+end
+function enum_buildings( positions )
+    local ret={}
+    for i,v in ipairs(df.global.world.buildings.other.ANY_ACTUAL) do --TODO: is ANY_ACTUAL the right one?
+
+        for _,p in pairs(positions.data) do
+            if is_building_in_position(v,p) then
+                table.insert(ret,v)
+                break
+            end
+        end
+    end
+    return ret
+end
+
+function enum_items_in_buildings( buildings )
+    local ret={}
+    for i,v in ipairs(buildings) do
+        for i,v in ipairs(v.contained_items) do
+            if v.use_mode==0 then
+                table.insert(ret,v.item)
+            end
+        end
+    end
+    return ret
+end
+--TODO/FIXME: sometimes it still is 1e+00 instead. "f" does not for as we have limited space (tested with stone 10.0 and 'k' does not fit)
 function format_volume( v )
     if v>1000 then
         return string.format("%.1gk",v/1000)
@@ -268,13 +300,26 @@ function list_items_at( loc,skip_loc )
             positions:set(nil,skip_loc.x,skip_loc.y,skip_loc.z)
         end
         its=enum_items(positions)
+
+        local tmp=enum_items_in_buildings(enum_buildings(positions))
+        --concat
+        for _,v in ipairs(tmp) do
+            table.insert(its, v)
+        end
     else
         local positions=multikey_table{}
         local x,y,z=get_target_pos(loc)
 
         positions:set({x=x,y=y,z=z},x,y,z)
         its=enum_items(positions)
+
+        local tmp=enum_items_in_buildings(enum_buildings(positions))
+        --concat
+        for _,v in ipairs(tmp) do
+            table.insert(its, v)
+        end
     end
+
     local ret={}
     for i,v in ipairs(its) do
         table.insert(ret,{item=v,text={{text=format_volume(v:getVolume()),width=4},dfhack.items.getDescription(v,0,true)}})
@@ -336,16 +381,50 @@ function ItemColumn:ask_fit( item )
 
     return true
 end
+function remove_from_building(building, item )
+    --remove general ref from item
+    local gref_types=df.general_ref_type
+    for i,v in ipairs(item.general_refs) do
+        if v:getType()==gref_types.BUILDING_HOLDER and v:getBuilding()==building then
+            item.general_refs:erase(i)
+            break
+        end
+    end
+    --remove contained_item from building
+    for i,v in ipairs(building.contained_items) do
+        if v.item==item then
+            building.contained_items:erase(i)
+            break
+        end
+    end
+    item.flags.removed=true
+end
 function ItemColumn:add_item( item )
     if self.current_loc=="A" then
         return false
-    elseif self.current_loc=="CONTAINER" then
-        return dfhack.items.moveToContainer(item,self.container_item)
+    end
+    local building=dfhack.items.getHolderBuilding(item)
+
+    local is_ok=true
+    --workaround for moveTo* not working with items in buildings
+    if building then
+        remove_from_building(building,item)
+    end
+
+    if self.current_loc=="CONTAINER" then
+        is_ok=dfhack.items.moveToContainer(item,self.container_item)
     elseif self.current_loc=="B" then
-        return dfhack.items.moveToContainer(item,get_player_backpack())
+        is_ok=dfhack.items.moveToContainer(item,get_player_backpack())
     else
         local x,y,z=get_target_pos(self.current_loc)
-        return dfhack.items.moveToGround(item,{x=x,y=y,z=z})
+        is_ok=dfhack.items.moveToGround(item,{x=x,y=y,z=z})
+    end
+    --undo the "remove from building" logic
+    if not is_ok and building then
+        local is_ok=dfhack.items.moveToBuilding(item,building)
+        if not is_ok then
+            print("WARNING: failed to readd item back to building",item,building)
+        end
     end
 end
 function ItemColumn:set_other_loc( ol )
