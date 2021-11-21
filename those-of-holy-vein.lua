@@ -107,10 +107,10 @@ function set_vein(x,y,z,mat)
 	--TODO: @PERF setting each per tile is slow because we do all those checks...
 
     local b=dfhack.maps.getTileBlock(x,y,z)
-    local ev=findMineralEv(b,mat.index)
+    local ev=findMineralEv(b,mat)
     if ev==nil then
         ev=df.block_square_event_mineralst:new()
-        ev.inorganic_mat=mat.index
+        ev.inorganic_mat=mat
         ev.flags.vein=true
         b.block_events:insert("#",ev)
     end
@@ -156,9 +156,21 @@ conversion_table=conversion_table or generate_conversion_table()
 
 function convert_tile_to_mat(x,y,z,mat)
 	local tt=df.tiletype
-	--TODO: find all other veins and unset the value
+	local tile_type=dfhack.maps.getTileType(x,y,z)
+	if attrs[tile_type].material==df.tiletype_material.MINERAL then
+		--TODO: find all other veins and unset the value
+		print("TODO")
+	elseif conversion_table[tile_type] then
+		set_vein(x,y,z,mat)
+		local b=dfhack.maps.getTileBlock(x,y,z)
+		b.tiletype[math.fmod(x,16)][math.fmod(y,16)]=conversion_table[tile_type]
+		print("Setting tiletype")
+	else
+		print("unkown")
+	end
 
 end
+convert_tile_to_mat(df.global.cursor.x,df.global.cursor.y,df.global.cursor.z,config_refs.mat_id)
 --[[ this has an issue that we need to pick correct tile type (i.e. connect to the other tiles)
 function draw_tile(x,y,z,tiletype)
     local tt=df.tiletype[tiletype]
@@ -166,7 +178,8 @@ function draw_tile(x,y,z,tiletype)
     b.tiletype[math.fmod(x,16)][math.fmod(y,16)]=tt
 end
 --]]
-
+--[[
 for k,v in pairs(conversion_table) do
 	print(df.tiletype[k],df.tiletype[v])
 end
+--]]
