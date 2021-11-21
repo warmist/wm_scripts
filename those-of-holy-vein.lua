@@ -76,8 +76,8 @@ function query_materials_around( unit_id,material_id1,material_name_id2 )
 	local u=df.unit.find(unit_id)
 	local pos=u.pos
 
-	local dx={ 0, 0,-1, 0, 1,-1, 0, 1,-1, 1}
-	local dy={ 0, 0, 1, 1, 1,-1,-1,-1, 0, 0}
+	local dx={ 0, 0,-1, 0, 1,-1, 0, 1,-1, 0, 1}
+	local dy={ 0, 0, 1, 1, 1,-1,-1,-1, 0, 0, 0}
 	local dz={-1, 1}
 	for i=1,#dx do
 		local x=pos.x+dx[i]
@@ -101,4 +101,72 @@ function query_materials_around( unit_id,material_id1,material_name_id2 )
 		end
 	end
 	return false
+end
+
+function set_vein(x,y,z,mat)
+	--TODO: @PERF setting each per tile is slow because we do all those checks...
+
+    local b=dfhack.maps.getTileBlock(x,y,z)
+    local ev=findMineralEv(b,mat.index)
+    if ev==nil then
+        ev=df.block_square_event_mineralst:new()
+        ev.inorganic_mat=mat.index
+        ev.flags.vein=true
+        b.block_events:insert("#",ev)
+    end
+    dfhack.maps.setTileAssignment(ev.tile_bitmask,math.fmod(x,16),math.fmod(y,16),true)
+end
+
+--Idea is that we convert one tiletype (e.g. soil or lava_stone or etc...) to mineral
+function find_closest_mineral( tt )
+	local ta=attrs[tt]
+	for i,v in ipairs(df.tiletype) do
+		if v and attrs[v].material==df.tiletype_material.MINERAL then
+			local trg_ta=attrs[v]
+			if ta.shape==trg_ta.shape and
+			   ta.variant==trg_ta.variant and
+			   ta.special==trg_ta.special and
+			   ta.direction==trg_ta.direction then
+			   	return v
+			end
+		end
+	end
+end
+function generate_conversion_table()
+	--TODO: add builtin table (or dont?)
+	local ret={}
+	local allowed_materials={
+		[df.tiletype_material.SOIL]=true, --not sure, but maybe for outside forts?
+		[df.tiletype_material.STONE]=true,
+		[df.tiletype_material.LAVA_STONE]=true,
+		--[df.tiletype_material.FROZEN_LIQUID]=true, not sure bout this one.... seems out of place
+		--[df.tiletype_material.HFS]=true, --maybe?
+		--[df.tiletype_material.PLANT]=true, --need more logic, too lazy
+		--[df.tiletype_material.CONSTRUCTION]=true, --would be fun... needs more logic
+	}
+	for i,v in ipairs(df.tiletype) do
+		if v and allowed_materials[attrs[v].material] then
+			--print(v,attrs[v].caption)
+			ret[v]=find_closest_mineral(v)
+		end
+	end
+	return ret
+end
+conversion_table=conversion_table or generate_conversion_table()
+
+function convert_tile_to_mat(x,y,z,mat)
+	local tt=df.tiletype
+	--TODO: find all other veins and unset the value
+
+end
+--[[ this has an issue that we need to pick correct tile type (i.e. connect to the other tiles)
+function draw_tile(x,y,z,tiletype)
+    local tt=df.tiletype[tiletype]
+    local b=dfhack.maps.getTileBlock(x,y,z)
+    b.tiletype[math.fmod(x,16)][math.fmod(y,16)]=tt
+end
+--]]
+
+for k,v in pairs(conversion_table) do
+	print(df.tiletype[k],df.tiletype[v])
 end
