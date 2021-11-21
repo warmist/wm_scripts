@@ -37,6 +37,7 @@ Pressing :kbd:`enter` moves item from one list to the other (e.g. from container
         * other WORN items
         * probably impossible but pass time?
         * Dragged: i.e. minecart -- not possible (not easily at least) only set when doing a job with wheelbarrow
+        * default DF has get/put into horse or other hauler animal
 ]]
 
 local gui = require 'gui'

@@ -1,0 +1,104 @@
+--[[
+	Random idea #1773: those of the holy vein:
+	Your dwarves start with a vein of <some special holy material>. Any dwarf that gets too far from it, dies (not necessarily immediately). However there would be some arcane rituals that can be done to propagate the vein. 
+	Mod1: vein grows itself randomly, thus the fort must grow with it
+	Mod2: vein only grows in obsidian (not sure how to get started though.... maybe obsidian walls are ok too?)
+	Bonus points (aka power goal): dwarves are birthed from the "clusters" that sometimes are embedded in the vein
+
+	Implementation thoughts:
+		* due to complexity of checking world it might be better to be c++
+		* for now i'll just randomly pick some unit ids to check every N ticks
+	It has these parts:
+		* misc stuff (id lookup etc...)
+		* the unit checker: checking if unit has wall/floor/ceiling of specific material
+		* the vein grower
+		* the unit spawner
+		* vein control logic (i.e. how dwarves influence the vein)
+--]]
+
+config={
+	material_name="LIFEVEIN",
+	node_material_name="LIFENODULE",
+	race_id="DWARF",
+	max_num_unit_checked=10,
+}
+config_refs={}
+function find_config_ids()
+	--TODO: better errors (i.e more exact)
+	local done=0
+	for k,v in ipairs(df.global.world.raws.inorganics) do
+		if v.id==config.material_name then
+			config_refs.mat_id=k
+			config_refs.mat=v
+			done=done+1
+		elseif v.id==config.node_material_name then
+			config_refs.node_id=k
+			config_refs.node=v
+			done=done+1
+		end
+		if done==2 then
+			break
+		end
+	end
+	if done~=2 then
+		qerror("Could not find one of (or both) material and node_material in raws")
+	end
+	for k,v in ipairs(df.global.world.raws.creatures.all) do
+		if v.creature_id==config.race_id then
+			config_refs.race_id=k
+			config_refs.race=v
+			break
+		end
+	end
+	if config_refs.race==nil then
+		qerror("Could not find race in raws")
+	end
+end
+find_config_ids()
+
+
+local attrs=df.tiletype.attrs
+
+function findMineralEv(block,inorganic)
+    for k,v in pairs(block.block_events) do
+        if df.block_square_event_mineralst:is_instance(v) and v.inorganic_mat==inorganic then
+            return v
+        end
+    end
+end
+function query_materials_around( unit_id,material_id1,material_name_id2 )
+	--TODO: @PERF could cache all the vein locations into some sort of spacial lookup.
+	-- could lookup more tiles
+	-- could do something block based (i.e. group) and/or not worry about the exact positions
+	--NOTE: this is for vein material only. all other things are probably way easier to lookup
+	--local pos=copyall(df.global.cursor)
+
+	local u=df.unit.find(unit_id)
+	local pos=u.pos
+
+	local dx={ 0, 0,-1, 0, 1,-1, 0, 1,-1, 1}
+	local dy={ 0, 0, 1, 1, 1,-1,-1,-1, 0, 0}
+	local dz={-1, 1}
+	for i=1,#dx do
+		local x=pos.x+dx[i]
+		local y=pos.y+dy[i]
+		local z=pos.z+(dz[i] or 0)
+
+		local tile_type=dfhack.maps.getTileType(x,y,z)
+		if attrs[tile_type].material==df.tiletype_material.MINERAL then
+			--print("VEIN:",x,y,z)
+			local tile_block=dfhack.maps.getTileBlock(x,y,z)
+			if tile_block then --TODO: can this actually fail?
+				--TODO: @PERF theses two lookups can be merged and then mask could be looked up'ed smarter?
+				local mat_ev1=findMineralEv(tile_block,material_id1)
+				local mat_ev2=findMineralEv(tile_block,material_id2)
+				--print("Events:",mat_ev1,mat_ev2)
+				if (mat_ev1 and dfhack.maps.getTileAssignment(mat_ev1.tile_bitmask,math.fmod(x,16),math.fmod(y,16))) or
+				   (mat_ev2 and dfhack.maps.getTileAssignment(mat_ev2.tile_bitmask,math.fmod(x,16),math.fmod(y,16))) then
+				   	return true
+				end
+			end
+		end
+	end
+	return false
+end
