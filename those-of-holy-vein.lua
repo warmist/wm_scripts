@@ -144,6 +144,7 @@ function generate_conversion_table()
 		--[df.tiletype_material.PLANT]=true, --need more logic, too lazy
 		--[df.tiletype_material.CONSTRUCTION]=true, --would be fun... needs more logic
 	}
+	--TODO: soil needs special handling afaik
 	for i,v in ipairs(df.tiletype) do
 		if v and allowed_materials[attrs[v].material] then
 			--print(v,attrs[v].caption)
@@ -164,20 +165,53 @@ function convert_tile_to_mat(x,y,z,mat)
 		set_vein(x,y,z,mat)
 		local b=dfhack.maps.getTileBlock(x,y,z)
 		b.tiletype[math.fmod(x,16)][math.fmod(y,16)]=conversion_table[tile_type]
-		print("Setting tiletype")
+		--print("Setting tiletype")
+		return true
 	else
-		print("unkown")
+		--not handled
+		--printall(attrs[tile_type])
+		--KNOWN: soil: i would want to handle that but needs more work
 	end
 
 end
-convert_tile_to_mat(df.global.cursor.x,df.global.cursor.y,df.global.cursor.z,config_refs.mat_id)
---[[ this has an issue that we need to pick correct tile type (i.e. connect to the other tiles)
-function draw_tile(x,y,z,tiletype)
-    local tt=df.tiletype[tiletype]
-    local b=dfhack.maps.getTileBlock(x,y,z)
-    b.tiletype[math.fmod(x,16)][math.fmod(y,16)]=tt
+
+vein_state=vein_state or  {heads={}}
+
+function vein_state_tick(  )
+	--TODO: limit propagation to "solid" shape?
+	local steps_per_tick=3
+	if #vein_state.heads==0 then
+		table.insert(vein_state.heads,{pos=copyall(df.global.cursor)})
+		--add new head somewhere TODO
+	end
+
+	local cur_head=vein_state.heads[math.random(1,#vein_state.heads)]
+	for i=1,steps_per_tick do
+		local trg=copyall(cur_head.pos)
+		local dx={ 0, 0,-1, 0, 1,-1, 0, 1,-1, 1}
+		local dy={ 0, 0, 1, 1, 1,-1,-1,-1, 0, 0}
+		local dz={-1, 1}
+		local rpos=math.random(1,#dx)
+		trg.x=trg.x+dx[rpos]
+		trg.y=trg.y+dy[rpos]
+		trg.z=trg.z+(dz[rpos] or 0)
+		
+		if convert_tile_to_mat(trg.x,trg.y,trg.z,config_refs.mat_id) then
+			cur_head.pos=trg
+		end
+		--TODO: too many fails remove, what happens on other minerals
+		-- maybe add some width variation
+	end
+end
+vein_state_tick()
+--[[
+for x=-10,10 do
+	for y=-10,10 do
+		convert_tile_to_mat(df.global.cursor.x+x,df.global.cursor.y+y,df.global.cursor.z,config_refs.mat_id)
+	end
 end
 --]]
+
 --[[
 for k,v in pairs(conversion_table) do
 	print(df.tiletype[k],df.tiletype[v])
