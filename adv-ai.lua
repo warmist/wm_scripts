@@ -1,5 +1,11 @@
 local script=require "gui.script"
 local wakeup_ticks=100
+--[[ TODO:
+	* add job creation and stuff
+	* add actions maybe?
+	* cleanup on state change and stuff
+	* maybe more safety (moving might unload items/units!)
+--]]
 --utility
 function get_companions(unit)
     unit=unit or df.global.world.units.active[0]

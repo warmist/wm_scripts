@@ -20,6 +20,9 @@ Pressing :kbd:`enter` moves item from one list to the other (e.g. from container
 
 --]====]
 --[[
+    Feedback:
+        https://gist.github.com/warmist/22c8eac393f244453ced9b80de977314
+
     TODO:
         * add some way of listing/moving in buildings (place on table/in workshop)
         * better "tile name print"
@@ -38,6 +41,7 @@ Pressing :kbd:`enter` moves item from one list to the other (e.g. from container
         * probably impossible but pass time?
         * Dragged: i.e. minecart -- not possible (not easily at least) only set when doing a job with wheelbarrow
         * default DF has get/put into horse or other hauler animal
+        * tree view instead
 ]]
 
 local gui = require 'gui'

@@ -127,7 +127,7 @@ function find_closest_mineral( tt )
 			   ta.variant==trg_ta.variant and
 			   ta.special==trg_ta.special and
 			   ta.direction==trg_ta.direction then
-			   	return v
+			   	return i
 			end
 		end
 	end
@@ -147,28 +147,36 @@ function generate_conversion_table()
 	--TODO: soil needs special handling afaik
 	for i,v in ipairs(df.tiletype) do
 		if v and allowed_materials[attrs[v].material] then
-			--print(v,attrs[v].caption)
-			ret[v]=find_closest_mineral(v)
+			ret[i]=find_closest_mineral(v)
 		end
 	end
 	return ret
 end
-conversion_table=conversion_table or generate_conversion_table()
+conversion_table= generate_conversion_table()
 
 function convert_tile_to_mat(x,y,z,mat)
 	local tt=df.tiletype
 	local tile_type=dfhack.maps.getTileType(x,y,z)
+	if tile_type==nil then
+		return false
+	end
 	if attrs[tile_type].material==df.tiletype_material.MINERAL then
+		--TODO: if it's the same mineral you could walk through it
+		--print("\tTrying to walk into other mineral",x,y,z)
 		--TODO: find all other veins and unset the value
-		print("TODO")
+		--print("TODO")
 	elseif conversion_table[tile_type] then
+		--print("\tConversion found!",x,y,z)
 		set_vein(x,y,z,mat)
 		local b=dfhack.maps.getTileBlock(x,y,z)
 		b.tiletype[math.fmod(x,16)][math.fmod(y,16)]=conversion_table[tile_type]
 		--print("Setting tiletype")
 		return true
 	else
+		--print("\tConversion not found")
 		--not handled
+		--print(conversion_table[tile_type],find_closest_mineral( tile_type ))
+		--print(tt[tile_type])
 		--printall(attrs[tile_type])
 		--KNOWN: soil: i would want to handle that but needs more work
 	end
@@ -178,8 +186,9 @@ end
 vein_state=vein_state or  {heads={}}
 
 function vein_state_tick(  )
+	--print("TICK, no heads:",#vein_state.heads)
 	--TODO: limit propagation to "solid" shape?
-	local steps_per_tick=3
+	local steps_per_tick=1500
 	if #vein_state.heads==0 then
 		table.insert(vein_state.heads,{pos=copyall(df.global.cursor)})
 		--add new head somewhere TODO
@@ -188,6 +197,7 @@ function vein_state_tick(  )
 	local cur_head=vein_state.heads[math.random(1,#vein_state.heads)]
 	for i=1,steps_per_tick do
 		local trg=copyall(cur_head.pos)
+		--TODO: probably diagonals are bad
 		local dx={ 0, 0,-1, 0, 1,-1, 0, 1,-1, 1}
 		local dy={ 0, 0, 1, 1, 1,-1,-1,-1, 0, 0}
 		local dz={-1, 1}
@@ -195,12 +205,15 @@ function vein_state_tick(  )
 		trg.x=trg.x+dx[rpos]
 		trg.y=trg.y+dy[rpos]
 		trg.z=trg.z+(dz[rpos] or 0)
-		
+		--print("\tTrying step:",trg.x,trg.y,trg.z)
 		if convert_tile_to_mat(trg.x,trg.y,trg.z,config_refs.mat_id) then
 			cur_head.pos=trg
+			--print("\tStep success")
 		end
 		--TODO: too many fails remove, what happens on other minerals
 		-- maybe add some width variation
+		--TODO: add some directionality
+		--	limit the z variation somewhat
 	end
 end
 vein_state_tick()
