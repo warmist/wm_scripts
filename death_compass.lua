@@ -1,7 +1,9 @@
+--@module = true
 local overlay = require('plugins.overlay')
 local widgets = require('gui.widgets')
 local dialog = require 'gui.dialogs'
 
+local target_info
 DeathRadarWidget = defclass(DeathRadarWidget, overlay.OverlayWidget)
 DeathRadarWidget.ATTRS{
     viewscreens={'dungeonmode'},
@@ -10,31 +12,74 @@ DeathRadarWidget.ATTRS{
     long_dist=true,
 }
 
-function DeathRadarWidget:overlay_onupdate()
+function is_site_loaded( id )
+    for i,v in ipairs(df.global.world.world_data.active_site) do
+        if v.id==id then
+            return true
+        end
+    end
+end
+function find_local_corpse( hist_id )
+    for i,v in ipairs(df.global.world.items.other[CORPSE]) do
+        if v.hist_figure_id==hist_id then
+            return v,i
+        end
+    end
+end
+function DeathRadarWidget:update_target_info( trg )
+    local whereabouts=trg.figure.info.whereabouts
+    printall(whereabouts)
+    local location={}
+    self.location=location
 
-    if df.global.ui_advmode.menu==df.ui_advmode_menu.Travel then
+    location.gpos={whereabouts.pos_x,whereabouts.pos_y}
+    location.site=whereabouts.site
+end
+function DeathRadarWidget:overlay_onupdate()
+    if target_info~=self.target then
+        self.target=target_info
+        update_target_info(self.target)
+    end
+    local source={}
+    self.source=source
+    if df.global.ui_advmode.menu==df.ui_advmode_menu.Travel
+        and not df.global.ui_advmode.travel_not_moved then
         --we are traveling?
-        --TODO: this is not enough to check if traveling
         long_dist=true
         local army_id=df.global.ui_advmode.player_army_id
         local army=df.army.find(army_id)
+        source.gpos=copyall(army.pos)
+    elseif df.global.ui_advmode.menu==df.ui_advmode_menu.Travel then
+
     else
         --non traveling
-        
-        --target is in the same site?
-        --non-same site
+        if is_site_loaded(self.location.site) then
+            --target is in the same site?
+            long_dist=false
+            local corpse_item=find_local_corpse(self.target.figure.id)
+            if corpse_item==nil then
+                self.local_pos={-1,-1,-1}
+            else
+                self.local_pos=copyall(corpse_item.pos)
+            end
+        else
+            long_dist=true
+            --non-same site
+        end
     end
 end
 
 function DeathRadarWidget:onRenderFrame(dc)
+    print("Hello")
     dc:string("Hello world!")
-    for _,pos in ipairs(self.visible_artifacts_coords or {}) do
-        -- highlight tile at given coordinates
-    end
 end
 
 OVERLAY_WIDGETS = {radar=DeathRadarWidget}
---TODO add a choice?
+
+if dfhack_flags.module then
+    return
+end
+
 function get_last_dead_adv()
     local ret={}
     local nm=df.global.world.nemesis.all
@@ -62,14 +107,17 @@ function nice_print_nemesis(i, nem )
 
     return string.format("%d. %s (%d):died %d day(s) ago",i,name,nem.id,died_ago_days)
 end
+
+
+
 local choice_list={}
 local all_dead_adv=get_last_dead_adv()
 for i,v in ipairs(all_dead_adv) do
     table.insert(choice_list,{text=nice_print_nemesis(i,v),nem=v})
 end
---title, text, tcolor, choices, on_select, on_cancel, min_width, filter
-dialog.showListPrompt("Choose adventurer","Select adventurer to find",nil,choice_list,function (entry)
-    DeathRadarWidget{target=entry.nem}
+
+dialog.showListPrompt("Choose adventurer","Select adventurer to find",nil,choice_list,function (id,entry)
+    target_info=entry.nem
 end)
 
 -- region: {333,152,-13}
