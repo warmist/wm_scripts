@@ -8,10 +8,16 @@ DeathRadarWidget = defclass(DeathRadarWidget, overlay.OverlayWidget)
 DeathRadarWidget.ATTRS{
     viewscreens={'dungeonmode'},
     overlay_onupdate_max_freq_seconds=10,
-    frame={w=10,h=10},
+    frame={w=3,h=3},
     long_dist=true,
-}
 
+}
+--[=[
+    General todo:
+        * what todo when corpse is not found?
+        * region coords are bit finicky and maybe the compass should be more "fluid"
+        * how to quickly "complete" and remove the compass?
+--]=]
 function is_site_loaded( id )
     for i,v in ipairs(df.global.world.world_data.active_site) do
         if v.id==id then
@@ -20,58 +26,132 @@ function is_site_loaded( id )
     end
 end
 function find_local_corpse( hist_id )
-    for i,v in ipairs(df.global.world.items.other[CORPSE]) do
-        if v.hist_figure_id==hist_id then
+    for i,v in ipairs(df.global.world.items.other.CORPSE) do
+        if v.hist_figure_id==hist_id and v.flags.on_ground then
             return v,i
         end
     end
 end
 function DeathRadarWidget:update_target_info( trg )
     local whereabouts=trg.figure.info.whereabouts
-    printall(whereabouts)
-    local location={}
-    self.location=location
 
-    location.gpos={whereabouts.pos_x,whereabouts.pos_y}
-    location.site=whereabouts.site
+    self.global_pos={x=whereabouts.pos_x,y=whereabouts.pos_y}
+    self.site=whereabouts.site
 end
 function DeathRadarWidget:overlay_onupdate()
     if target_info~=self.target then
         self.target=target_info
-        update_target_info(self.target)
     end
-    local source={}
-    self.source=source
+    self.local_pos=nil
+    self.global_pos=nil
+
+    if self.target==nil then
+        return
+    end
+
+    self:update_target_info(self.target)
     if df.global.ui_advmode.menu==df.ui_advmode_menu.Travel
         and not df.global.ui_advmode.travel_not_moved then
         --we are traveling?
-        long_dist=true
-        local army_id=df.global.ui_advmode.player_army_id
-        local army=df.army.find(army_id)
-        source.gpos=copyall(army.pos)
-    elseif df.global.ui_advmode.menu==df.ui_advmode_menu.Travel then
 
     else
         --non traveling
         if is_site_loaded(self.location.site) then
             --target is in the same site?
-            long_dist=false
             local corpse_item=find_local_corpse(self.target.figure.id)
             if corpse_item==nil then
-                self.local_pos={-1,-1,-1}
+                --TODO: this bugs stuff out (e.g. picking up the corpse)
+                self.local_pos=nil
             else
                 self.local_pos=copyall(corpse_item.pos)
             end
         else
-            long_dist=true
             --non-same site
+            self.local_pos=nil
         end
     end
 end
 
-function DeathRadarWidget:onRenderFrame(dc)
-    print("Hello")
-    dc:string("Hello world!")
+function get_adv_pos( )
+    local adv=df.global.world.units.active[0]
+    return copyall(adv.pos)
+end
+function get_adv_pos_region(  )
+    return {x=df.global.world.map.region_x*3,y=df.global.world.map.region_y*3,z=df.global.world.map.region_z}
+end
+function calc_delta_pos(pos,trg)
+    local dx
+    local dy
+    local dz
+
+    if pos.x>trg.x then
+        dx=-1
+    elseif pos.x<trg.x then
+        dx=1
+    else
+        dx=0
+    end
+
+    if pos.y>trg.y then
+        dy=-1
+    elseif pos.y<trg.y then
+        dy=1
+    else
+        dy=0
+    end
+    if trg.z then
+        if pos.z>trg.z then
+            dz='>'
+        elseif pos.z<trg.z then
+            dz='<'
+        else
+            dz='O'
+        end
+    else
+        dz='O'
+    end
+
+    return dx,dy,dz
+end
+function DeathRadarWidget:onRenderBody(dc)
+    local dx
+    local dy
+    local dz
+    local p
+    if self.local_pos==nil and self.global_pos==nil then
+        dc:seek(1,1):string("?")
+        return
+    end
+    if df.global.ui_advmode.menu==df.ui_advmode_menu.Travel then
+        if self.local_pos then
+            dc:seek(1,1):string('L')
+            return
+        end
+        if not df.global.ui_advmode.travel_not_moved then
+            local army_id=df.global.ui_advmode.player_army_id
+            local army=df.army.find(army_id)
+            p=copyall(army.pos)
+            dx,dy,dz=calc_delta_pos(p,self.global_pos)
+        else
+            p=get_adv_pos_region()
+            dx,dy,dz=calc_delta_pos(p,self.global_pos)
+        end
+    else
+        if self.local_pos==nil then
+            --TODO need better coord here... something is fishy
+            p=get_adv_pos_region()
+            dx,dy,dz=calc_delta_pos(p,self.global_pos)
+        else
+            p=get_adv_pos()
+            dx,dy,dz=calc_delta_pos(p,self.local_pos)
+        end
+    end
+
+
+    dc:seek(1,1):string(dz)
+    if dx then
+        dc:seek(dx+1,dy+1):string('*')
+    end
 end
 
 OVERLAY_WIDGETS = {radar=DeathRadarWidget}
